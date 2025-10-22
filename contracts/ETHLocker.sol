@@ -19,11 +19,12 @@ contract ETHLocker is Ownable {
     mapping(address => bytes32) public tokenToPriceFeed;
     mapping(address => address) public tokenToAToken;
     mapping(address => uint256) public totalShares;
+    mapping(address => uint256) public totalaTokenShares;
 
     struct Lock {
         address owner;
         address token;
-        uint256 shares; // Represents the user's share of the pool
+        uint256 shares; 
         uint256 unlockTimestamp;
         uint256 targetPrice;
         bytes32 priceFeedId;
@@ -65,31 +66,34 @@ contract ETHLocker is Ownable {
         emit TokenSupportChanged(_token, priceFeedId, false);
     }
 
-    function deposit(address _token, uint256 _amount, uint256 timestamp, uint256 _targetPrice) external {  // timestamp
+    function deposit(address _token, uint256 _amount, uint256 timestamp, uint256 _targetPrice) external {  
         if(timestamp <= block.timestamp) {
-            revert("Timestamp must be in the future");
+            revert("Invalid Timestamp");
         }
         bytes32 priceFeedId = tokenToPriceFeed[_token];
         address aToken = tokenToAToken[_token];
-        require(priceFeedId != bytes32(0), "Token not supported");
+        require(priceFeedId != bytes32(0), "Token is not supported");
         require(_amount > 0, "Amount must be greater than 0");
 
         uint256 poolTotalShares = totalShares[_token];
         uint256 sharesToMint;
 
-        uint256 totalAssets = IERC20(aToken).balanceOf(address(this));
+        uint256 totalAssets = totalaTokenShares[aToken];
 
         if (poolTotalShares == 0 || totalAssets == 0) {
             sharesToMint = _amount;
         } else {
             sharesToMint = (_amount * poolTotalShares) / totalAssets;
         }
-        require(sharesToMint > 0, "Shares to mint must be > 0");
 
-        totalShares[_token] += sharesToMint;
+        require(sharesToMint > 0, "Shares to mint must be greater than zero");
+
         IERC20(_token).transferFrom(msg.sender, address(this), _amount);
+        totalShares[_token] += sharesToMint;
         IERC20(_token).approve(address(aavePool), _amount);
         aavePool.supply(_token, _amount, address(this), 0);
+
+        totalaTokenShares[aToken] += _amount;
 
         lockIdCounter++;
         uint256 lockId = lockIdCounter;
@@ -122,13 +126,14 @@ contract ETHLocker is Ownable {
         require(timeMet || priceMet, "Withdrawal conditions not met");
 
         address aToken = tokenToAToken[userLock.token];
-        uint256 poolTotalAssets = IERC20(aToken).balanceOf(address(this));
+        uint256 poolTotalAssets = totalaTokenShares[aToken];
         uint256 poolTotalShares = totalShares[userLock.token];
         uint256 amountToWithdraw = (userLock.shares * poolTotalAssets) / poolTotalShares;
 
         userLock.withdrawn = true;
         totalShares[userLock.token] -= userLock.shares;
 
+        totalaTokenShares[aToken] -= amountToWithdraw;
         uint256 withdrawnAmount = aavePool.withdraw(userLock.token, amountToWithdraw, msg.sender);
         emit Withdrawn(_lockId, msg.sender, withdrawnAmount, userLock.shares);
     }
