@@ -19,7 +19,7 @@ contract ETHLocker is Ownable {
     mapping(address => bytes32) public tokenToPriceFeed;
     mapping(address => address) public tokenToAToken;
     mapping(address => uint256) public totalShares;
-    mapping(address => uint256) public totalaTokenShares;
+    // mapping(address => uint256) public totalaTokenShares;
 
     struct Lock {
         address owner;
@@ -78,7 +78,8 @@ contract ETHLocker is Ownable {
         uint256 poolTotalShares = totalShares[_token];
         uint256 sharesToMint;
 
-        uint256 totalAssets = totalaTokenShares[aToken];
+        // uint256 totalAssets = totalaTokenShares[aToken];
+        uint256 totalAssets = IERC20(aToken).balanceOf(address(this));
 
         if (poolTotalShares == 0 || totalAssets == 0) {
             sharesToMint = _amount;
@@ -93,7 +94,7 @@ contract ETHLocker is Ownable {
         IERC20(_token).approve(address(aavePool), _amount);
         aavePool.supply(_token, _amount, address(this), 0);
 
-        totalaTokenShares[aToken] += _amount;
+        // totalaTokenShares[aToken] += _amount;
 
         lockIdCounter++;
         uint256 lockId = lockIdCounter;
@@ -126,14 +127,16 @@ contract ETHLocker is Ownable {
         require(timeMet || priceMet, "Withdrawal conditions not met");
 
         address aToken = tokenToAToken[userLock.token];
-        uint256 poolTotalAssets = totalaTokenShares[aToken];
+        // uint256 poolTotalAssets = totalaTokenShares[aToken];
+        uint256 poolTotalAssets = IERC20(aToken).balanceOf(address(this));
         uint256 poolTotalShares = totalShares[userLock.token];
         uint256 amountToWithdraw = (userLock.shares * poolTotalAssets) / poolTotalShares;
 
         userLock.withdrawn = true;
         totalShares[userLock.token] -= userLock.shares;
 
-        totalaTokenShares[aToken] -= amountToWithdraw;
+        // totalaTokenShares[aToken] -= amountToWithdraw;
+        // IERC20(aToken).approve(address(aavePool), amountToWithdraw);
         uint256 withdrawnAmount = aavePool.withdraw(userLock.token, amountToWithdraw, msg.sender);
         emit Withdrawn(_lockId, msg.sender, withdrawnAmount, userLock.shares);
     }
