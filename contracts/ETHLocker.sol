@@ -7,19 +7,22 @@ import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
+import "@openzeppelin/contracts/utils/Strings.sol";
+import "@openzeppelin/contracts/utils/Base64.sol";
+
 interface IETHLockerNFT {
     function mint(address to, uint256 tokenId) external;
+    function setTokenURI(uint256 tokenId, string memory _tokenURI) external;
 }
 
 contract ETHLocker is Ownable {
     IPyth public pyth;
-    IERC721 public nft;
+    IETHLockerNFT public nft;
     IAavePool public aavePool;
 
     mapping(address => bytes32) public tokenToPriceFeed;
     mapping(address => address) public tokenToAToken;
     mapping(address => uint256) public totalShares;
-    // mapping(address => uint256) public totalaTokenShares;
 
     struct Lock {
         address owner;
@@ -45,7 +48,7 @@ contract ETHLocker is Ownable {
         address _aavePoolAddress
     ) Ownable(msg.sender) {
         pyth = IPyth(_pythAddress);
-        nft = IERC721(_nftAddress);
+        nft = IETHLockerNFT(_nftAddress);
         aavePool = IAavePool(_aavePoolAddress);
     }
 
@@ -78,7 +81,6 @@ contract ETHLocker is Ownable {
         uint256 poolTotalShares = totalShares[_token];
         uint256 sharesToMint;
 
-        // uint256 totalAssets = totalaTokenShares[aToken];
         uint256 totalAssets = IERC20(aToken).balanceOf(address(this));
 
         if (poolTotalShares == 0 || totalAssets == 0) {
@@ -94,8 +96,6 @@ contract ETHLocker is Ownable {
         IERC20(_token).approve(address(aavePool), _amount);
         aavePool.supply(_token, _amount, address(this), 0);
 
-        // totalaTokenShares[aToken] += _amount;
-
         lockIdCounter++;
         uint256 lockId = lockIdCounter;
 
@@ -109,7 +109,32 @@ contract ETHLocker is Ownable {
             withdrawn: false
         });
 
-        IETHLockerNFT(address(nft)).mint(msg.sender, lockId);
+        nft.mint(msg.sender, lockId);
+
+        string memory json = Base64.encode(
+            bytes(
+                string.concat(
+                    '{"name": "ETHLocker Position #',
+                    Strings.toString(lockId),
+                    '", "description": "A locked position in the ETHLocker protocol having an unlock timestamp and target price", "attributes": [',
+                    '{"trait_type": "Token", "value": "',
+                    Strings.toHexString(uint160(_token), 20),
+                    '"},',
+                    '{"trait_type": "Shares", "value": "',
+                    Strings.toString(sharesToMint),
+                    '"},',
+                    '{"trait_type": "Unlock Timestamp", "value": "',
+                    Strings.toString(timestamp),
+                    '"},',
+                    '{"trait_type": "Target Price", "value": "',
+                    Strings.toString(_targetPrice),
+                    '"}',
+                    ']}'
+                )
+            )
+        );
+        nft.setTokenURI(lockId, string.concat('data:application/json;base64,', json));
+
         emit Deposited(lockId, msg.sender, _token, _amount, sharesToMint);
     }
 
@@ -117,7 +142,7 @@ contract ETHLocker is Ownable {
         Lock storage userLock = locks[_lockId];
         require(userLock.owner != address(0), "Lock does not exist");
         require(!userLock.withdrawn, "Lock has already been withdrawn");
-        require(nft.ownerOf(_lockId) == msg.sender, "You are not the owner of this lock's NFT");
+        require(IERC721(address(nft)).ownerOf(_lockId) == msg.sender, "Sender is not the owner of this lock's NFT");
 
         bool timeMet = block.timestamp >= userLock.unlockTimestamp;
         IPyth.Price memory price = pyth.getPriceUnsafe(userLock.priceFeedId);
@@ -127,7 +152,6 @@ contract ETHLocker is Ownable {
         require(timeMet || priceMet, "Withdrawal conditions not met");
 
         address aToken = tokenToAToken[userLock.token];
-        // uint256 poolTotalAssets = totalaTokenShares[aToken];
         uint256 poolTotalAssets = IERC20(aToken).balanceOf(address(this));
         uint256 poolTotalShares = totalShares[userLock.token];
         uint256 amountToWithdraw = (userLock.shares * poolTotalAssets) / poolTotalShares;
@@ -135,8 +159,6 @@ contract ETHLocker is Ownable {
         userLock.withdrawn = true;
         totalShares[userLock.token] -= userLock.shares;
 
-        // totalaTokenShares[aToken] -= amountToWithdraw;
-        // IERC20(aToken).approve(address(aavePool), amountToWithdraw);
         uint256 withdrawnAmount = aavePool.withdraw(userLock.token, amountToWithdraw, msg.sender);
         emit Withdrawn(_lockId, msg.sender, withdrawnAmount, userLock.shares);
     }
