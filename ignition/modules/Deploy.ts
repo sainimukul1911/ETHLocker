@@ -13,6 +13,8 @@ const ETHLockerModule = buildModule("ETHLockerModule", (m) => {
     AAVE_POOL_ADDRESS,
   ]);
 
+  m.call(nft, "setMinter", [ethLocker]);
+
   return { ethLocker, nft };
 });
 

@@ -112,27 +112,30 @@ contract ETHLocker is Ownable {
         nft.mint(msg.sender, lockId);
 
         string memory json = Base64.encode(
-            bytes(
-                string.concat(
-                    '{"name": "ETHLocker Position #',
-                    Strings.toString(lockId),
-                    '", "description": "A locked position in the ETHLocker protocol having an unlock timestamp and target price", "attributes": [',
-                    '{"trait_type": "Token", "value": "',
-                    Strings.toHexString(uint160(_token), 20),
-                    '"},',
-                    '{"trait_type": "Shares", "value": "',
-                    Strings.toString(sharesToMint),
-                    '"},',
-                    '{"trait_type": "Unlock Timestamp", "value": "',
-                    Strings.toString(timestamp),
-                    '"},',
-                    '{"trait_type": "Target Price", "value": "',
-                    Strings.toString(_targetPrice),
-                    '"}',
-                    ']}'
-                )
+        bytes(
+            string.concat(
+                '{"name": "ETHLocker Position #',
+                Strings.toString(lockId),
+                '", "description": "A locked position in the ETHLocker protocol having an unlock timestamp and target price", ', 
+                '"image": "https://gateway.lighthouse.storage/ipfs/bafkreicacwa3ijpjpesujcsmq5obwf2me7zmnamjm2al45rhhdkmsxf7d4", ',
+
+                '"attributes": [', 
+                '{"trait_type": "Token", "value": "',
+                Strings.toHexString(uint160(_token), 20),
+                '"},',
+                '{"trait_type": "Shares", "value": "',
+                Strings.toString(sharesToMint),
+                '"},',
+                '{"trait_type": "Unlock Timestamp", "value": "',
+                Strings.toString(timestamp),
+                '"},',
+                '{"trait_type": "Target Price", "value": "',
+                Strings.toString(_targetPrice),
+                '"}',
+                ']}'
             )
-        );
+        )
+    );
         nft.setTokenURI(lockId, string.concat('data:application/json;base64,', json));
 
         emit Deposited(lockId, msg.sender, _token, _amount, sharesToMint);
